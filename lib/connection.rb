@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'mysql'
-require 'digest/md5'
+require 'digest/sha2'
 
 require_relative 'config'
 require_relative 'classes'
@@ -34,7 +34,7 @@ class Connection
 		
 		return false unless id
 		
-		if Digest::MD5.hexdigest(password) == hash
+		if password.crypt(hash[0,19]) == hash
 			return id
 		end
 		
@@ -54,7 +54,7 @@ class Connection
 	def update_password(id, password)
 		
 		@con.query("update " + MailConfig::TABLE_USERS + " set password = '%s' where id = %d;" %
-			[ Digest::MD5.hexdigest(password), id ])
+			[ password.crypt('$6$' + Digest::SHA512.hexdigest(password)[0,16]), id ])
 		
 	end
 	
@@ -122,7 +122,7 @@ class Connection
 		email = @con.escape_string("#{lh}@#{domain.name}")
 		
 		@con.query("insert into %s set domain_id = %d, password = '%s', email = '%s', super_admin = %d " %
-			[ MailConfig::TABLE_USERS, domain.id, Digest::MD5.hexdigest(password), email, super_admin ? 1 : 0 ])
+			[ MailConfig::TABLE_USERS, domain.id, password.crypt('$6$' + Digest::SHA512.hexdigest(password)[0,16]), email, super_admin ? 1 : 0 ])
 		
 		if admin_domains && admin_domains.length > 0
 			id = insert_id
@@ -142,7 +142,7 @@ class Connection
 		if password.nil? or password.empty?
 			password = "password"
 		else
-			password = "'%s'" % Digest::MD5.hexdigest(password)
+			password = "'%s'" % password.crypt('$6$' + Digest::SHA512.hexdigest(password)[0,16])
 		end
 		
 		sa = super_admin ? 1 : 0
