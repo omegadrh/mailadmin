@@ -164,11 +164,7 @@ end
 					</select>
 					<br/>
 					<p class="ieonly">Destination:</p>
-					<input class="txt" type="text" name="dlh" placeholder="Destination"/> @ <select name="dst_domain">
-	<% user.admin_domains.each do |id, d| %>
-						<option value="<%= id %>"><%= d.name %></option>
-	<% end %>
-					</select>
+					<input class="txt" type="text" name="dlh" placeholder="Destination" title="Comma-separated list of recipients" maxlength="200" />
 					<br/>
 					<input type="submit" class="btn ok" value="Save"/>
 				</form>
