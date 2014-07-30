@@ -309,25 +309,19 @@ post '/user/alias/new' do
 	src_id = params[:src_domain]
 	dst_id = params[:dst_domain]
 	src = @user.admin_domains[src_id]
-	dst = @user.admin_domains[dst_id]
 	
 	if src_id.nil? || src.nil?
 		session[:flash] = "Invalid source domain"
 		r '/user/dashboard'
 	end
 	
-	if dst_id.nil? || dst.nil?
-		session[:flash] = "Invalid destination domain"
-		r '/user/dashboard'
-	end
-	
 	if dlh.nil? || dlh.empty?
-		session[:flash] = "Destination user can't be blank"
+		session[:flash] = "Destination can't be blank"
 		r '/user/dashboard'
 	end
 	
 	src_email = "#{slh}@#{src.name}"
-	dst_email = "#{dlh}@#{dst.name}"
+	dst_email = "#{dlh}"
 	
 	e_src = @con.get_alias_by_name(src_email, :src)
 	
