@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-require 'mysql'
+require 'mysql2'
 require 'digest/sha2'
 
 require_relative 'config'
@@ -8,11 +8,11 @@ require_relative 'classes'
 
 class Connection
 	def initialize
-		@con = Mysql::real_connect(
-			MailConfig::DB_HOST, 
-			MailConfig::DB_USER, 
-			MailConfig::DB_PASS, 
-			MailConfig::DB_DB
+		@con = Mysql2::Client.new(
+			:host => MailConfig::DB_HOST, 
+			:username => MailConfig::DB_USER, 
+			:password => MailConfig::DB_PASS, 
+			:database => MailConfig::DB_DB
 		)
 	end
 	
@@ -28,10 +28,9 @@ class Connection
 		
 		q = @con.query(
 			"select id, password from " + MailConfig::TABLE_USERS + " where email = '%s';" % 
-				@con.escape_string(email))
-		
-		id, hash = q.fetch_row
-		
+				@con.escape(email))
+
+		id,hash = q.first.values
 		return false unless id
 		
 		if password.crypt(hash[0,19]) == hash
@@ -45,9 +44,9 @@ class Connection
 	def login_exists?(lh, domain)
 		
 		q = @con.query("select count(*) from " + MailConfig::TABLE_USERS + " where email = '%s'" %
-			@con.escape_string("#{lh}@#{domain.name}") )
+			@con.escape("#{lh}@#{domain.name}") )
 		
-		return q.fetch_row.first.to_i > 0
+		return q.first.values.first.to_i > 0
 		
 	end
 	
@@ -71,21 +70,20 @@ class Connection
 		
 		user = nil
 		
-		while row = q.fetch_hash
-			
+		q.each do |row|
 			if user.nil?
 				user = User.new
-				user.id = row['id']
+				user.id = row['id'].to_s
 				user.email = row['email']
 				user.password = row['password']
-				user.domain_id = row['domain_id']
-				user.super_admin = row['super_admin'] == "1"
+				user.domain_id = row['domain_id'].to_s
+				user.super_admin = row['super_admin'] == 1
 				user.admin_domains = {}
 			end
 			
 			if row['admin_domain_id']
 				domain = Domain.new
-				domain.id = row['admin_domain_id']
+				domain.id = row['admin_domain_id'].to_s
 				domain.name = row['admin_domain_name']
 				user.admin_domains[domain.id] = domain
 			end
@@ -99,7 +97,7 @@ class Connection
 			
 			q = @con.query("select * from autoresponder where email = '%s'" %
 				user.email)
-			row = q.fetch_hash
+			row = q.first
 			if row
 				
 				ar.email = row['email']
@@ -112,17 +110,16 @@ class Connection
 				
 			end
 		end
-		
 		return user
 		
 	end
 	
 	def add_user(lh, domain, password, admin_domains, super_admin)
 		
-		email = @con.escape_string("#{lh}@#{domain.name}")
+		email = @con.escape("#{lh}@#{domain.name}")
 		
-		@con.query("insert into %s set domain_id = %d, password = '%s', email = '%s', super_admin = %d " %
-			[ MailConfig::TABLE_USERS, domain.id, password.crypt('$6$' + Digest::SHA512.hexdigest(password)[0,16]), email, super_admin ? 1 : 0 ])
+		@con.query("insert into %s set domain_id = %d, password = '%s', email = '#{email}', super_admin = %d " %
+			[ MailConfig::TABLE_USERS, domain.id, password.crypt('$6$' + Digest::SHA512.hexdigest(password)[0,16]), super_admin ? 1 : 0 ])
 		
 		if admin_domains && admin_domains.length > 0
 			id = insert_id
@@ -173,12 +170,12 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 		
 		if test_goldfish
 			@con.query("delete from autoresponder where email = '%s'" % 
-				@con.escape_string(user.email))
+				@con.escape(user.email))
 		end
 		
 		@con.query("delete from " + MailConfig::TABLE_ADMINS + " where user_id = %d" % uid)
 		@con.query("delete from " + MailConfig::TABLE_ALIASES + " where destination = '%s'" % 
-			@con.escape_string(user.email))
+			@con.escape(user.email))
 		@con.query("delete from " + MailConfig::TABLE_USERS + " where id = %d" % uid)
 		
 	end
@@ -193,12 +190,12 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 		
 		ret = []
 		
-		while row = q.fetch_hash
+		q.each do |row|
 			
 			user = User.new
-			user.id = row['id']
+			user.id = row['id'].to_s
 			user.email = row['email']
-			user.admin_domains = [ row['is_admin'] ]
+			user.admin_domains = [ row['is_admin'].to_s ]
 			
 			ret << user
 			
@@ -213,10 +210,10 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 		q = @con.query("select * from " + MailConfig::TABLE_ALIASES + "
 			where domain_id = %d and source != destination order by source asc" % domain.id)
 		ret = []
-		while row = q.fetch_hash
+		q.each do |row|
 			
 			a = Alias.new
-			a.id = row['id']
+			a.id = row['id'].to_s
 			a.source = row['source']
 			a.destination = row['destination']
 			
@@ -231,7 +228,7 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 	def add_domain(name, uid)
 		
 		@con.query("insert into " + MailConfig::TABLE_DOMAINS + " values(NULL, '%s');" % 
-			@con.escape_string(name))
+			@con.escape(name))
 		
 		id = insert_id
 		
@@ -254,13 +251,13 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 		
 		ret = nil
 		
-		if row = q.fetch_hash
+		if row = q.first
 			
 			ret = Alias.new
-			ret.id = row['id']
+			ret.id = row['id'].to_s
 			ret.source = row['source']
 			ret.destination = row['destination']
-			ret.domain_id = row['domain_id']
+			ret.domain_id = row['domain_id'].to_s
 			
 		end
 		
@@ -273,9 +270,9 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 		f = field == :src ? "source" : "destination"
 		
 		q = @con.query("select id from " + MailConfig::TABLE_ALIASES + " where %s = '%s'" % 
-			[ f, @con.escape_string(name) ])
+			[ f, @con.escape(name) ])
 		
-		return row[0] if row = q.fetch_row
+		return row.values[0] if row = q.first
 		
 		return nil
 		
@@ -284,7 +281,7 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 	def add_alias(src_domain, src, dst)
 		
 		@con.query("insert into " + MailConfig::TABLE_ALIASES + " values (NULL, %d, '%s', '%s')" %
-			[ src_domain.id, @con.escape_string(src), @con.escape_string(dst) ])
+			[ src_domain.id, @con.escape(src), @con.escape(dst) ])
 		
 	end
 	
@@ -314,13 +311,13 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 		
 		@con.query("replace into autoresponder values('%s', '%s', '%s', '%s', '%s', %d, '%s')" %
 			[ 
-				@con.escape_string(email),
-				@con.escape_string(descname),
-				@con.escape_string(from_str),
-				@con.escape_string(to_str),
-				@con.escape_string(message),
+				@con.escape(email),
+				@con.escape(descname),
+				@con.escape(from_str),
+				@con.escape(to_str),
+				@con.escape(message),
 				enabled ? 1 : 0,
-				@con.escape_string(subject)
+				@con.escape(subject)
 			]
 		)
 		
@@ -333,7 +330,7 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 		q = @con.query("select * from `autoresponder` where `enabled` 
 			and `from` <= NOW() and `to` > NOW()")
 		
-		while row = q.fetch_hash
+		q.each do |row|
 			yield row
 		end
 		
@@ -349,9 +346,9 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 			where autoresponder.email = '%s' 
 			and autoresponder_recipients.recipient_email = '%s' 
 			and autoresponder_recipients.send_date >= autoresponder.`from`" %
-				[ @con.escape_string(user), @con.escape_string(recipient) ])
+				[ @con.escape(user), @con.escape(recipient) ])
 		
-		if q.fetch_row
+		if q.count
 			return true
 		end
 		
@@ -364,7 +361,7 @@ to domains the other can't see -- it'll delete ones that "I" can't check.
 		return false unless test_goldfish
 		
 		@con.query("replace into autoresponder_recipients values('%s', '%s', now())" %
-			[ @con.escape_string(user), @con.escape_string(recipient) ])
+			[ @con.escape(user), @con.escape(recipient) ])
 		
 	end
 	
