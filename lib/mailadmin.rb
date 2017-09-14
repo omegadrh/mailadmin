@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 
+require 'tilt/erb'
 require 'rubygems'
 require 'sinatra'
 
